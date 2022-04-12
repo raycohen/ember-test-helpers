@@ -6,6 +6,12 @@ const debugTree = BroccoliDebug.buildDebugCallback('ember-test-helpers');
 module.exports = {
   name: require('./package').name,
 
+  included() {
+    this._super.included.apply(this, arguments);
+
+    this.import('vendor/monkey-patches.js', { type: 'test' });
+  },
+
   treeForAddonTestSupport(tree) {
     let input = debugTree(tree, 'addon-test-support:input');
 
