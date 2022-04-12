@@ -18,28 +18,23 @@ import DebugInfo, { TestDebugInfo } from './-internal/debug-info';
 //
 // This utilizes a local utility method present in Ember since around 2.8.0 to
 // properly consider pending AJAX requests done within legacy acceptance tests.
-const _internalPendingRequestsModule = (() => {
+const _internalPendingRequests = (() => {
   let loader = (Ember as any).__loader;
 
   if (loader.registry['ember-testing/test/pending_requests']) {
     // Ember <= 3.1
-    return loader.require('ember-testing/test/pending_requests');
+    return loader.require('ember-testing/test/pending_requests')
+      .pendingRequests;
   } else if (loader.registry['ember-testing/lib/test/pending_requests']) {
     // Ember >= 3.2
-    return loader.require('ember-testing/lib/test/pending_requests');
+    return loader.require('ember-testing/lib/test/pending_requests')
+      .pendingRequests;
   }
 
-  return null;
+  return () => 0;
 })();
 
-const _internalGetPendingRequestsCount = () => {
-  if (_internalPendingRequestsModule) {
-    return _internalPendingRequestsModule.pendingRequests();
-  }
-  return 0;
-};
-
-if (typeof jQuery !== 'undefined' && _internalPendingRequestsModule) {
+if (typeof jQuery !== 'undefined' && _internalPendingRequests) {
   // This exists to ensure that the AJAX listeners setup by Ember itself
   // (which as of 2.17 are not properly torn down) get cleared and released
   // when the application is destroyed. Without this, any AJAX requests
@@ -49,16 +44,20 @@ if (typeof jQuery !== 'undefined' && _internalPendingRequestsModule) {
   // This can be removed once Ember 4.0.0 is released
   EmberApplicationInstance.reopen({
     willDestroy(...args: any[]) {
-      jQuery(document).off(
-        'ajaxSend',
-        _internalPendingRequestsModule.incrementPendingRequests
-      );
-      jQuery(document).off(
-        'ajaxComplete',
-        _internalPendingRequestsModule.decrementPendingRequests
-      );
+      const internalPendingRequests = _internalPendingRequests();
 
-      _internalPendingRequestsModule.clearPendingRequests();
+      if (internalPendingRequests !== 0) {
+        jQuery(document).off(
+          'ajaxSend',
+          internalPendingRequests.incrementPendingRequests
+        );
+        jQuery(document).off(
+          'ajaxComplete',
+          internalPendingRequests.decrementPendingRequests
+        );
+
+        internalPendingRequests.clearPendingRequests();
+      }
 
       this._super(...args);
     },
@@ -73,7 +72,7 @@ let requests: XMLHttpRequest[];
 */
 function pendingRequests() {
   let localRequestsPending = requests !== undefined ? requests.length : 0;
-  let internalRequestsPending = _internalGetPendingRequestsCount();
+  let internalRequestsPending = _internalPendingRequests();
 
   return localRequestsPending + internalRequestsPending;
 }
